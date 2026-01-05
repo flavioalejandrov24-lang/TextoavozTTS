@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Axel TTS Pro - Piper Edition</title>
+    <title>Axel TTS Pro</title>
     <style>
         * {
             margin: 0;
@@ -36,22 +36,13 @@
         h1 {
             font-size: 32px;
             font-weight: 900;
-            margin-bottom: 8px;
+            margin-bottom: 24px;
             text-align: center;
             background: linear-gradient(to right, #60a5fa, #34d399);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
             font-style: italic;
-        }
-
-        .subtitle {
-            text-align: center;
-            font-size: 11px;
-            color: #64748b;
-            margin-bottom: 24px;
-            font-weight: 600;
-            letter-spacing: 1px;
         }
 
         label {
@@ -79,6 +70,7 @@
             outline: none;
             margin-bottom: 24px;
             box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+            min-height: 150px;
         }
 
         textarea:focus {
@@ -216,6 +208,41 @@
             background: #475569;
         }
 
+        #preview-btn {
+            width: 48px;
+            height: 48px;
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+            border: 1px solid rgba(34, 197, 94, 0.5);
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+
+        #preview-btn:hover:not(:disabled) {
+            background: #16a34a;
+            color: white;
+        }
+
+        .download-section {
+            margin-top: 16px;
+            text-align: center;
+        }
+
+        #download-btn {
+            background: rgba(168, 85, 247, 0.2);
+            color: #a855f7;
+            border: 1px solid rgba(168, 85, 247, 0.5);
+            padding: 12px 32px;
+        }
+
+        #download-btn:hover:not(:disabled) {
+            background: #9333ea;
+            color: white;
+        }
+
         .divider {
             border-top: 1px solid rgba(255, 255, 255, 0.1);
             padding-top: 24px;
@@ -255,16 +282,15 @@
 <body>
     <div class="container">
         <h1>AXEL TTS PRO</h1>
-        <div class="subtitle">Powered by Piper AI</div>
         
         <div>
             <label for="text-input">Escribe aquí el texto</label>
-            <textarea id="text-input" rows="5" placeholder="¿Qué quieres que diga hoy?"></textarea>
+            <textarea id="text-input" rows="6" placeholder="¿Qué quieres que diga hoy?"></textarea>
         </div>
 
         <div class="controls-grid">
             <div>
-                <label>Voz de Piper</label>
+                <label>Voz del Sistema</label>
                 <select id="voice-select">
                     <option value="es_MX-ald-medium.onnx">Aldo (Mexicano - Medio)</option>
                     <option value="es_MX-carl-x_low.onnx">Carlos (Mexicano - Grave)</option>
@@ -294,6 +320,11 @@
             <button id="play-btn">▶ Play</button>
             <button id="stop-btn">Detener</button>
             <button id="clear-btn">Limpiar</button>
+            <button id="preview-btn" title="Preview de voz">🔊</button>
+        </div>
+
+        <div class="download-section">
+            <button id="download-btn" disabled>💾 Guardar Audio</button>
         </div>
 
         <div class="divider">
@@ -302,6 +333,7 @@
     </div>
 
     <script>
+        // 🔥 CONFIGURACIÓN - Cambia esta URL si es necesaria
         const API_URL = 'https://alejandrott24-piper-tts-server.hf.space/tts';
         
         const textInput = document.getElementById('text-input');
@@ -313,9 +345,12 @@
         const playBtn = document.getElementById('play-btn');
         const stopBtn = document.getElementById('stop-btn');
         const clearBtn = document.getElementById('clear-btn');
+        const previewBtn = document.getElementById('preview-btn');
+        const downloadBtn = document.getElementById('download-btn');
         const statusTag = document.getElementById('status-tag');
 
         let currentAudio = null;
+        let lastAudioBlob = null;
 
         // Actualizar displays de sliders
         rateRange.oninput = () => {
@@ -337,33 +372,20 @@
             return new Blob([byteArray], { type: mimeType });
         }
 
-        // Reproducir texto usando Piper API
-        playBtn.onclick = async () => {
-            const text = textInput.value.trim();
-            
-            if (!text) {
-                statusTag.textContent = 'Escribe algo primero';
-                setTimeout(() => statusTag.textContent = 'Listo para usar', 2000);
-                return;
-            }
-
-            // Detener audio anterior si existe
-            if (currentAudio) {
-                currentAudio.pause();
-                currentAudio = null;
-            }
-
-            playBtn.disabled = true;
-            statusTag.innerHTML = '<span class="loading">Generando audio...</span>';
-
+        // Función para generar audio desde la API
+        async function generateAudio(text, isPreview = false) {
             try {
+                statusTag.innerHTML = '<span class="loading">Generando audio...</span>';
+                
+                const previewText = isPreview ? "Hola, soy " + voiceSelect.options[voiceSelect.selectedIndex].text.split(' ')[0] : text;
+                
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        text: text,
+                        text: previewText,
                         model: voiceSelect.value,
                         length_scale: parseFloat(rateRange.value),
                         noise_scale: parseFloat(pitchRange.value),
@@ -373,6 +395,8 @@
                 });
 
                 if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Error del servidor:', response.status, errorText);
                     throw new Error(`Error del servidor: ${response.status}`);
                 }
 
@@ -382,59 +406,140 @@
                     throw new Error('No se recibió audio del servidor');
                 }
 
-                // Convertir base64 a audio
-                const audioBlob = base64ToBlob(data.audio, 'audio/wav');
-                const audioUrl = URL.createObjectURL(audioBlob);
-                
-                currentAudio = new Audio(audioUrl);
-                
-                currentAudio.onplay = () => {
-                    statusTag.textContent = 'Reproduciendo...';
-                };
-
-                currentAudio.onended = () => {
-                    statusTag.textContent = 'Listo para usar';
-                    playBtn.disabled = false;
-                    URL.revokeObjectURL(audioUrl);
-                };
-
-                currentAudio.onerror = () => {
-                    statusTag.textContent = 'Error al reproducir';
-                    playBtn.disabled = false;
-                    setTimeout(() => statusTag.textContent = 'Listo para usar', 2000);
-                };
-
-                await currentAudio.play();
+                return base64ToBlob(data.audio, 'audio/wav');
 
             } catch (error) {
-                console.error('Error:', error);
+                console.error('Error completo:', error);
+                throw error;
+            }
+        }
+
+        // Función para reproducir audio
+        function playAudio(audioBlob) {
+            // Detener audio anterior
+            if (currentAudio) {
+                currentAudio.pause();
+                URL.revokeObjectURL(currentAudio.src);
+            }
+
+            const audioUrl = URL.createObjectURL(audioBlob);
+            currentAudio = new Audio(audioUrl);
+            
+            currentAudio.onplay = () => {
+                statusTag.textContent = 'Reproduciendo...';
+            };
+
+            currentAudio.onended = () => {
+                statusTag.textContent = 'Listo para usar';
+                playBtn.disabled = false;
+                previewBtn.disabled = false;
+            };
+
+            currentAudio.onerror = (e) => {
+                console.error('Error al reproducir:', e);
+                statusTag.textContent = 'Error al reproducir audio';
+                playBtn.disabled = false;
+                previewBtn.disabled = false;
+                setTimeout(() => statusTag.textContent = 'Listo para usar', 2000);
+            };
+
+            currentAudio.play().catch(err => {
+                console.error('Error en play():', err);
+                statusTag.textContent = 'Error al iniciar reproducción';
+                playBtn.disabled = false;
+                previewBtn.disabled = false;
+            });
+        }
+
+        // 🔊 PREVIEW - Escuchar cómo suena la voz
+        previewBtn.onclick = async () => {
+            previewBtn.disabled = true;
+            playBtn.disabled = true;
+
+            try {
+                const audioBlob = await generateAudio('', true);
+                playAudio(audioBlob);
+            } catch (error) {
                 statusTag.textContent = `Error: ${error.message}`;
+                previewBtn.disabled = false;
                 playBtn.disabled = false;
                 setTimeout(() => statusTag.textContent = 'Listo para usar', 3000);
             }
         };
 
-        // Detener reproducción
+        // ▶️ PLAY - Reproducir el texto completo
+        playBtn.onclick = async () => {
+            const text = textInput.value.trim();
+            
+            if (!text) {
+                statusTag.textContent = 'Escribe algo primero';
+                setTimeout(() => statusTag.textContent = 'Listo para usar', 2000);
+                return;
+            }
+
+            playBtn.disabled = true;
+            previewBtn.disabled = true;
+            downloadBtn.disabled = true;
+
+            try {
+                const audioBlob = await generateAudio(text, false);
+                lastAudioBlob = audioBlob; // Guardar para descarga
+                downloadBtn.disabled = false;
+                playAudio(audioBlob);
+            } catch (error) {
+                console.error('Error:', error);
+                statusTag.textContent = `Error: ${error.message}`;
+                playBtn.disabled = false;
+                previewBtn.disabled = false;
+                setTimeout(() => statusTag.textContent = 'Listo para usar', 3000);
+            }
+        };
+
+        // ⏹️ DETENER
         stopBtn.onclick = () => {
             if (currentAudio) {
                 currentAudio.pause();
                 currentAudio.currentTime = 0;
-                currentAudio = null;
             }
             statusTag.textContent = 'Detenido';
             playBtn.disabled = false;
+            previewBtn.disabled = false;
             setTimeout(() => statusTag.textContent = 'Listo para usar', 1500);
         };
 
-        // Limpiar texto
+        // 🧹 LIMPIAR
         clearBtn.onclick = () => {
             textInput.value = '';
             if (currentAudio) {
                 currentAudio.pause();
                 currentAudio = null;
             }
+            lastAudioBlob = null;
+            downloadBtn.disabled = true;
             playBtn.disabled = false;
+            previewBtn.disabled = false;
             statusTag.textContent = 'Listo para usar';
+        };
+
+        // 💾 GUARDAR AUDIO
+        downloadBtn.onclick = () => {
+            if (!lastAudioBlob) {
+                statusTag.textContent = 'Genera audio primero';
+                setTimeout(() => statusTag.textContent = 'Listo para usar', 2000);
+                return;
+            }
+
+            const url = URL.createObjectURL(lastAudioBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `axel-tts-${Date.now()}.wav`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            statusTag.textContent = 'Audio descargado';
+            setTimeout(() => statusTag.textContent = 'Listo para usar', 2000);
         };
     </script>
 </body>
