@@ -176,7 +176,7 @@
         }
 
         #play-btn {
-            flex: 1.5;
+            flex: 1;
             background: #2563eb;
             color: white;
         }
@@ -292,9 +292,9 @@
             <div>
                 <label>Voz del Sistema</label>
                 <select id="voice-select">
-                    <option value="es_MX-ald-medium.onnx">Aldo (Mexicano - Medio)</option>
-                    <option value="es_MX-carl-x_low.onnx">Carlos (Mexicano - Grave)</option>
-                    <option value="es_MX-claude-high.onnx">Claude (Mexicano - Agudo)</option>
+                    <option value="es_MX-claude-high.onnx">Claude (Piper MX - High)</option>
+                    <option value="es_ES-davefx-medium.onnx">DaveFX (Piper ES - Medium)</option>
+                    <option value="browser">Voz del Navegador (Rápida)</option>
                 </select>
             </div>
             
@@ -351,6 +351,16 @@
 
         let currentAudio = null;
         let lastAudioBlob = null;
+        let browserVoices = [];
+        let browserUtterance = null;
+
+        // Cargar voces del navegador
+        function loadBrowserVoices() {
+            browserVoices = speechSynthesis.getVoices();
+        }
+        
+        speechSynthesis.onvoiceschanged = loadBrowserVoices;
+        loadBrowserVoices();
 
         // Actualizar displays de sliders
         rateRange.oninput = () => {
@@ -453,6 +463,34 @@
 
         // 🔊 PREVIEW - Escuchar cómo suena la voz
         previewBtn.onclick = async () => {
+            const selectedVoice = voiceSelect.value;
+            
+            // Si es voz del navegador
+            if (selectedVoice === 'browser') {
+                speechSynthesis.cancel();
+                browserUtterance = new SpeechSynthesisUtterance("Hola, esta es la voz del navegador");
+                
+                const spanishVoice = browserVoices.find(v => v.lang.startsWith('es'));
+                if (spanishVoice) browserUtterance.voice = spanishVoice;
+                
+                browserUtterance.rate = parseFloat(rateRange.value);
+                browserUtterance.pitch = parseFloat(pitchRange.value);
+                
+                browserUtterance.onstart = () => {
+                    statusTag.textContent = 'Reproduciendo preview...';
+                    previewBtn.disabled = true;
+                };
+                
+                browserUtterance.onend = () => {
+                    statusTag.textContent = 'Listo para usar';
+                    previewBtn.disabled = false;
+                };
+                
+                speechSynthesis.speak(browserUtterance);
+                return;
+            }
+            
+            // Si es voz de Piper
             previewBtn.disabled = true;
             playBtn.disabled = true;
 
@@ -477,6 +515,41 @@
                 return;
             }
 
+            const selectedVoice = voiceSelect.value;
+            
+            // Si es voz del navegador (RÁPIDO para textos largos)
+            if (selectedVoice === 'browser') {
+                speechSynthesis.cancel();
+                browserUtterance = new SpeechSynthesisUtterance(text);
+                
+                const spanishVoice = browserVoices.find(v => v.lang.startsWith('es'));
+                if (spanishVoice) browserUtterance.voice = spanishVoice;
+                
+                browserUtterance.rate = parseFloat(rateRange.value);
+                browserUtterance.pitch = parseFloat(pitchRange.value);
+                
+                browserUtterance.onstart = () => {
+                    statusTag.textContent = 'Reproduciendo...';
+                    playBtn.disabled = true;
+                };
+                
+                browserUtterance.onend = () => {
+                    statusTag.textContent = 'Listo para usar';
+                    playBtn.disabled = false;
+                };
+                
+                browserUtterance.onerror = () => {
+                    statusTag.textContent = 'Error al reproducir';
+                    playBtn.disabled = false;
+                    setTimeout(() => statusTag.textContent = 'Listo para usar', 2000);
+                };
+                
+                speechSynthesis.speak(browserUtterance);
+                downloadBtn.disabled = true; // No se puede descargar voz del navegador
+                return;
+            }
+
+            // Si es voz de Piper (puede tardar con textos largos)
             playBtn.disabled = true;
             previewBtn.disabled = true;
             downloadBtn.disabled = true;
@@ -497,10 +570,14 @@
 
         // ⏹️ DETENER
         stopBtn.onclick = () => {
+            // Detener Piper
             if (currentAudio) {
                 currentAudio.pause();
                 currentAudio.currentTime = 0;
             }
+            // Detener navegador
+            speechSynthesis.cancel();
+            
             statusTag.textContent = 'Detenido';
             playBtn.disabled = false;
             previewBtn.disabled = false;
@@ -510,10 +587,16 @@
         // 🧹 LIMPIAR
         clearBtn.onclick = () => {
             textInput.value = '';
+            
+            // Detener Piper
             if (currentAudio) {
                 currentAudio.pause();
                 currentAudio = null;
             }
+            
+            // Detener navegador
+            speechSynthesis.cancel();
+            
             lastAudioBlob = null;
             downloadBtn.disabled = true;
             playBtn.disabled = false;
